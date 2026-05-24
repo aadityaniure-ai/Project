@@ -10,6 +10,20 @@ with st.sidebar:
     page = st.radio("Sport", PAGES)
 
 
+# ── Shared dialogs ───────────────────────────────────────────────────────────
+@st.dialog("Create Pull Request")
+def _create_pr_dialog():
+    pr_title = st.text_input("PR Title")
+    pr_branch = st.text_input("Target Branch", value="main")
+    pr_desc = st.text_area("Description")
+    if st.button("Submit PR"):
+        if not pr_title:
+            st.error("PR title is required.")
+        else:
+            st.success(f"PR created: {pr_title} → {pr_branch}")
+            st.balloons()
+
+
 # ── NBA ──────────────────────────────────────────────────────────────────────
 def render_nba():
     st.header("NBA Predictions")
@@ -54,6 +68,10 @@ def render_nba():
             st.success(f"Positive EV on AWAY: {ev_away:+.3f}")
         else:
             st.warning("No strong EV edge detected.")
+
+    st.divider()
+    if st.button("Create PR"):
+        _create_pr_dialog()
 
     st.divider()
     st.subheader("Player Availability")
