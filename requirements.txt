@@ -4,3 +4,4 @@ scikit-learn
 xgboost
 requests
 nba_api
+nfl_data_py

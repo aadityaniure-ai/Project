@@ -1,0 +1,69 @@
+name: Daily Data Fetch
+
+on:
+  schedule:
+    - cron: '0 12 * * *'   # 12:00 UTC — after NBA injury report (~7 AM ET) and NFL update drops
+  workflow_dispatch:         # allow manual trigger from GitHub Actions UI
+
+permissions:
+  contents: write            # needed to push parquet files back to the branch
+
+jobs:
+  fetch-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch NBA data
+        id: nba
+        run: python data/fetch_nba.py
+        continue-on-error: true         # football still runs even if NBA feed is down
+
+      - name: Fetch Football data
+        id: football
+        run: python data/fetch_football.py
+        continue-on-error: true
+
+      - name: Report fetch status
+        run: |
+          echo "NBA fetch: ${{ steps.nba.outcome }}"
+          echo "Football fetch: ${{ steps.football.outcome }}"
+          if [[ "${{ steps.nba.outcome }}" == "failure" && "${{ steps.football.outcome }}" == "failure" ]]; then
+            echo "Both fetches failed" && exit 1
+          fi
+
+      - name: Commit updated parquet files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/nba_game_logs.parquet \
+                  data/nba_availability_today.parquet \
+                  data/football_game_logs.parquet \
+                  data/football_availability_today.parquet \
+                  2>/dev/null || true
+          git diff --staged --quiet && echo "No data changes." || \
+            git commit -m "chore: daily data refresh $(date -u +'%Y-%m-%d %H:%M UTC')"
+
+      - name: Push changes
+        if: success()
+        run: |
+          for i in 1 2 3 4; do
+            git push origin ${{ github.ref_name }} && break
+            echo "Push attempt $i failed, retrying in $((i * 2))s..."
+            sleep $((i * 2))
+          done
